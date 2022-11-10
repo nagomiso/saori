@@ -189,34 +189,38 @@ def read_sql_query(
         sql_query = template.render(**jinja_params)
     else:
         sql_query = sql
-    LOGGER.debug("Rendered SQL: %s", sql_query)
-    return _wr.athena.read_sql_query(
-        sql=sql_query,
-        database=database,
-        ctas_approach=ctas_approach,
-        unload_approach=unload_approach,
-        unload_parameters=unload_parameters,
-        categories=categories,
-        chunksize=chunksize,
-        s3_output=s3_output,
-        workgroup=workgroup,
-        encryption=encryption,
-        kms_key=kms_key,
-        keep_files=keep_files,
-        ctas_database_name=ctas_database_name,
-        ctas_temp_table_name=ctas_temp_table_name,
-        ctas_bucketing_info=ctas_bucketing_info,
-        use_threads=use_threads,
-        boto3_session=boto3_session,
-        max_cache_seconds=max_cache_seconds,
-        max_cache_query_inspections=max_cache_query_inspections,
-        max_remote_cache_entries=max_remote_cache_entries,
-        max_local_cache_entries=max_local_cache_entries,
-        data_source=data_source,
-        params=params,
-        s3_additional_kwargs=s3_additional_kwargs,
-        pyarrow_additional_kwargs=pyarrow_additional_kwargs,
-    )
+    LOGGER.debug("Rendered SQL:\n%s", sql_query)
+    try:
+        return _wr.athena.read_sql_query(
+            sql=sql_query,
+            database=database,
+            ctas_approach=ctas_approach,
+            unload_approach=unload_approach,
+            unload_parameters=unload_parameters,
+            categories=categories,
+            chunksize=chunksize,
+            s3_output=s3_output,
+            workgroup=workgroup,
+            encryption=encryption,
+            kms_key=kms_key,
+            keep_files=keep_files,
+            ctas_database_name=ctas_database_name,
+            ctas_temp_table_name=ctas_temp_table_name,
+            ctas_bucketing_info=ctas_bucketing_info,
+            use_threads=use_threads,
+            boto3_session=boto3_session,
+            max_cache_seconds=max_cache_seconds,
+            max_cache_query_inspections=max_cache_query_inspections,
+            max_remote_cache_entries=max_remote_cache_entries,
+            max_local_cache_entries=max_local_cache_entries,
+            data_source=data_source,
+            params=params,
+            s3_additional_kwargs=s3_additional_kwargs,
+            pyarrow_additional_kwargs=pyarrow_additional_kwargs,
+        )
+    except _wr.exceptions.QueryFailed:
+        LOGGER.error("Failed Query:\n%s", sql_query)
+        raise
 
 
 def save_sql_query_results(

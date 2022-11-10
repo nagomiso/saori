@@ -353,6 +353,11 @@ def save_sql_query_results(
             Pandas DataFrame or Generator of Pandas DataFrames if chunksize is passed.
     """
     if Path(save_dir).protocol == "file":
+        if not s3_output:
+            raise ValueError(
+                "If `save_dir` is local filesystem directory path, "
+                "you must specify `s3_output`."
+            )
         tempdir_prefix = s3_output
     else:
         tempdir_prefix = save_dir

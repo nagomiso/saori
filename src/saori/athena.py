@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import logging
 import sys
+from concurrent.futures import ThreadPoolExecutor
 from functools import partial
 from typing import Any
 
@@ -8,17 +10,16 @@ import awswrangler as _wr
 import boto3
 import jinja2
 from pandas import DataFrame
+from pathlibfs import Path
+
+from .path import mktempdir
 
 if sys.version_info < (3, 9):
     from typing import Iterator
 else:
     from collections.abc import Iterator
 
-from concurrent.futures import ThreadPoolExecutor
-
-from pathlibfs import Path
-
-from .path import mktempdir
+LOGGER = logging.getLogger(__name__)
 
 
 def _copy_file(src, dst) -> None:
@@ -188,6 +189,7 @@ def read_sql_query(
         sql_query = template.render(**jinja_params)
     else:
         sql_query = sql
+    LOGGER.debug("Rendered SQL: %s", sql_query)
     return _wr.athena.read_sql_query(
         sql=sql_query,
         database=database,
@@ -221,16 +223,12 @@ def save_sql_query_results(
     sql: str,
     save_dir: str | Path,
     database: str,
-    ctas_approach: bool = True,
-    unload_approach: bool = False,
-    unload_parameters: dict[str, Any] | None = None,
     categories: list[str] | None = None,
     s3_output: str | None = None,
     workgroup: str | None = None,
     encryption: str | None = None,
     kms_key: str | None = None,
     ctas_database_name: str | None = None,
-    ctas_temp_table_name: str | None = None,
     ctas_bucketing_info: tuple[list[str], int] | None = None,
     use_threads: bool | int = True,
     boto3_session: boto3.Session | None = None,
@@ -246,6 +244,110 @@ def save_sql_query_results(
     pyarrow_additional_kwargs: dict[str, Any] | None = None,
     max_workers: int = 1,
 ) -> None:
+    """Save query results in Parquet format.
+
+    Args:
+        sql: SQL query.
+        save_dir: \
+            Directory path to save the results. \
+            If this value is local filesystem directory path, \
+            you must specify `s3_output`.
+        database: \
+            AWS Glue/Athena database name - It is only the origin database \
+            from where the query will be launched. \
+            You can still using and mixing several databases writing \
+            the full table name within the sql (e.g. `database.table`).
+        categories: \
+            List of columns names that should be returned as pandas.Categorical. \
+            Recommended for memory restricted environments.
+        s3_output: Amazon S3 path.
+        workgroup: Athena workgroup.
+        encryption: \
+            Valid values: [None, 'SSE_S3', 'SSE_KMS']. \
+            Notice: 'CSE_KMS' is not supported.
+        kms_key: For SSE-KMS, this is the KMS key ARN or ID.
+        keep_files: \
+            Whether staging files produced by Athena are retained. 'True' by default.
+        ctas_database_name: \
+            The name of the alternative database \
+            where the CTAS temporary table is stored. \
+            If None, the default `database` is used.
+        ctas_bucketing_info: \
+            Tuple consisting of the column names used for bucketing \
+            as the first element and the number of buckets as the second element. \
+            Only `str`, `int` and `bool` are supported \
+            as column data types for bucketing.
+        use_threads: \
+            True to enable concurrent requests, False to disable multiple threads. \
+            If enabled os.cpu_count() will be used as the max number of threads. \
+            If integer is provided, specified number is used.
+        boto3_session:
+            Boto3 Session. \
+            The default boto3 session will be used if boto3_session receive None.
+        max_cache_seconds: \
+            awswrangler can look up in Athena's history \
+            if this query has been run before.
+            If so, and its completion time is less than `max_cache_seconds` \
+            before now, awswrangler skips query execution \
+            and just returns the same results as last time. \
+            If cached results are valid, awswrangler ignores \
+            the `ctas_approach`, `s3_output`, `encryption`, `kms_key`, \
+            `keep_files` and `ctas_temp_table_name` params. \
+            If reading cached data fails for any reason, \
+            execution falls back to the usual query run path.
+        max_cache_query_inspections: \
+            Max number of queries that will be inspected from \
+            the history to try to find some result to reuse. \
+            The bigger the number of inspection, \
+            the bigger will be the latency for not cached queries. \
+            Only takes effect if max_cache_seconds > 0.
+        max_remote_cache_entries: \
+            Max number of queries that will be retrieved \
+            from AWS for cache inspection. \
+            The bigger the number of inspection, \
+            the bigger will be the latency for not cached queries. \
+            Only takes effect if max_cache_seconds > 0 and default value is 50.
+        max_local_cache_entries:
+            Max number of queries for which metadata will be cached locally. \
+            This will reduce the latency and also enables keeping more than \
+            `max_remote_cache_entries` available for the cache. \
+            This value should not be smaller than max_remote_cache_entries. \
+            Only takes effect if max_cache_seconds > 0 and default value is 100.
+        data_source: \
+            Data Source / Catalog name. \
+            If None, 'AwsDataCatalog' will be used by default.
+        params: \
+            Dict of parameters that will be used for constructing the SQL query. \
+            Only named parameters are supported. \
+            The dict needs to contain the information in the form {'name': 'value'} \
+            and the SQL query needs to contain \
+            `:name;`. Note that for varchar columns and similar, \
+            you must surround the value in single quotes.
+        jinja_params: \
+            Dict of Jinja rendering parameters.
+        jinja_options: \
+            Dict of Jinja template options.
+        s3_additional_kwargs: \
+            Forwarded to botocore requests. \
+            e.g. s3_additional_kwargs={'RequestPayer': 'requester'}
+        pyarrow_additional_kwargs: \
+            Forward to the ParquetFile class or converting an Arrow table to Pandas, \
+            currently only an "coerce_int96_timestamp_unit" or "timestamp_as_object" \
+            argument will be considered. If reading parquet \
+            files where you cannot convert a timestamp to pandas Timestamp[ns] \
+            consider setting timestamp_as_object=True, \
+            to allow for timestamp units larger than "ns". \
+            If reading parquet data that still uses INT96 (like Athena outputs) \
+            you can use coerce_int96_timestamp_unit to specify \
+            what timestamp unit to encode INT96 to (by default this is "ns", \
+            if you know the output parquet came \
+            from a system that encodes timestamp to a particular unit \
+            then set this to that same unit e.g. coerce_int96_timestamp_unit="ms").
+
+    Returns:
+        DataFrame | Iterator[DataFrame]: \
+            Pandas DataFrame or Generator of Pandas DataFrames if chunksize is passed.
+    """
     if Path(save_dir).protocol == "file":
         tempdir_prefix = s3_output
     else:
@@ -254,9 +356,7 @@ def save_sql_query_results(
         query_resuts = read_sql_query(
             sql=sql,
             database=database,
-            ctas_approach=ctas_approach,
-            unload_approach=unload_approach,
-            unload_parameters=unload_parameters,
+            ctas_approach=True,
             categories=categories,
             chunksize=True,
             s3_output=str(tempdir),
@@ -265,7 +365,6 @@ def save_sql_query_results(
             kms_key=kms_key,
             keep_files=True,
             ctas_database_name=ctas_database_name,
-            ctas_temp_table_name=ctas_temp_table_name,
             ctas_bucketing_info=ctas_bucketing_info,
             use_threads=use_threads,
             boto3_session=boto3_session,
@@ -282,7 +381,7 @@ def save_sql_query_results(
         )
         next(query_resuts)  # type: ignore
         copy_files = partial(_copy_file, dst=save_dir)
-        sources = tempdir.glob("**/*bucket-*")
+        sources = tempdir.glob("temp_table*/*")
         if 1 < max_workers:
             with ThreadPoolExecutor(max_workers=max_workers) as executor:
                 for _ in executor.map(copy_files, sources):

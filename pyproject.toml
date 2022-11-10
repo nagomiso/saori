@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "saori"
-version = "0.1.1"
+version = "0.1.2"
 description = "Simple wrapper library for awswrangler that specializes in issuing queries to AWS Athena"
 authors = ["nagomiso <daiseigi.giants+github@gmail.com>"]
 readme = "README.md"

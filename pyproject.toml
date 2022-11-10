@@ -1,0 +1,30 @@
+[tool.poetry]
+name = "saori"
+version = "0.1.0"
+description = "Simple wrapper library for awswrangler that specializes in issuing queries to AWS Athena"
+authors = ["nagomiso <daiseigi.giant+github@gmail.com>"]
+readme = "README.md"
+license = "MIT"
+packages = [{include = "saori", from = "src"}]
+
+
+[tool.poetry.dependencies]
+python = ">=3.8,<3.11"
+s3fs = "^2022.11.0"
+pathlibfs = "^0.3.0"
+awswrangler = "^2.17.0"
+jinja2 = "^3.1.2"
+
+
+[tool.black]
+line-length = 88
+
+
+[tool.isort]
+profile = "black"
+line_length = 88
+
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"

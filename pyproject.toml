@@ -2,7 +2,7 @@
 name = "saori"
 version = "0.1.0"
 description = "Simple wrapper library for awswrangler that specializes in issuing queries to AWS Athena"
-authors = ["nagomiso <daiseigi.giant+github@gmail.com>"]
+authors = ["nagomiso <daiseigi.giants+github@gmail.com>"]
 readme = "README.md"
 license = "MIT"
 packages = [{include = "saori", from = "src"}]

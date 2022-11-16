@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import multiprocessing as mp
 import sys
 from concurrent.futures import ThreadPoolExecutor
 from functools import partial
@@ -246,7 +247,7 @@ def save_sql_query_results(
     jinja_options: dict[str, Any] | None = None,
     s3_additional_kwargs: dict[str, Any] | None = None,
     pyarrow_additional_kwargs: dict[str, Any] | None = None,
-    max_workers: int = 1,
+    max_workers: int | None = None,
 ) -> None:
     """Save query results in Parquet format.
 
@@ -347,6 +348,7 @@ def save_sql_query_results(
             if you know the output parquet came \
             from a system that encodes timestamp to a particular unit \
             then set this to that same unit e.g. coerce_int96_timestamp_unit="ms").
+        max_workers:
 
     Returns:
         DataFrame | Iterator[DataFrame]: \
@@ -391,8 +393,20 @@ def save_sql_query_results(
         next(query_resuts)  # type: ignore
         move_file = partial(_move_file, dst=save_dir)
         sources = tempdir.glob("temp_table*/*")
-        if 1 < max_workers:
-            with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        default_max_workers = min(32, mp.cpu_count() + 4)
+        if not max_workers:
+            max_workers_ = default_max_workers
+        elif isinstance(max_workers, int):
+            if max_workers < 0:
+                max_workers_ = max(default_max_workers + max_workers, 1)
+            else:
+                max_workers_ = max_workers
+        else:
+            raise ValueError(
+                f"`max_workers` must be integer. {repr(max_workers)} is not integer."
+            )
+        if 1 < max_workers_:
+            with ThreadPoolExecutor(max_workers=max_workers_) as executor:
                 for _ in executor.map(move_file, sources):
                     pass
         else:

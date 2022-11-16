@@ -355,6 +355,18 @@ def save_sql_query_results(
         DataFrame | Iterator[DataFrame]: \
             Pandas DataFrame or Generator of Pandas DataFrames if chunksize is passed.
     """
+    default_max_workers = min(32, mp.cpu_count() + 4)
+    if not max_workers:
+        max_workers_ = default_max_workers
+    elif isinstance(max_workers, int):
+        if max_workers < 0:
+            max_workers_ = max(default_max_workers + max_workers, 1)
+        else:
+            max_workers_ = max_workers
+    else:
+        raise ValueError(
+            f"`max_workers` must be integer. {repr(max_workers)} is not integer."
+        )
     if Path(save_dir).protocol == "file":
         if not s3_output:
             raise ValueError(
@@ -394,18 +406,6 @@ def save_sql_query_results(
         next(query_resuts)  # type: ignore
         move_file = partial(_move_file, dst=save_dir)
         sources = tempdir.glob("temp_table*/*")
-        default_max_workers = min(32, mp.cpu_count() + 4)
-        if not max_workers:
-            max_workers_ = default_max_workers
-        elif isinstance(max_workers, int):
-            if max_workers < 0:
-                max_workers_ = max(default_max_workers + max_workers, 1)
-            else:
-                max_workers_ = max_workers
-        else:
-            raise ValueError(
-                f"`max_workers` must be integer. {repr(max_workers)} is not integer."
-            )
         if 1 < max_workers_:
             with ThreadPoolExecutor(max_workers=max_workers_) as executor:
                 for _ in executor.map(move_file, sources):

@@ -22,7 +22,7 @@ else:
 LOGGER = logging.getLogger(__name__)
 
 
-def _copy_file(src, dst) -> None:
+def _move_file(src, dst) -> None:
     src_path = Path(src)
     dst_dir = Path(dst)
     src_path.move(dst_dir / src_path.name)
@@ -389,12 +389,12 @@ def save_sql_query_results(
             pyarrow_additional_kwargs=pyarrow_additional_kwargs,
         )
         next(query_resuts)  # type: ignore
-        copy_files = partial(_copy_file, dst=save_dir)
+        move_file = partial(_move_file, dst=save_dir)
         sources = tempdir.glob("temp_table*/*")
         if 1 < max_workers:
             with ThreadPoolExecutor(max_workers=max_workers) as executor:
-                for _ in executor.map(copy_files, sources):
+                for _ in executor.map(move_file, sources):
                     pass
         else:
             for src in sources:
-                copy_files(src)
+                move_file(src)

@@ -348,7 +348,8 @@ def save_sql_query_results(
             if you know the output parquet came \
             from a system that encodes timestamp to a particular unit \
             then set this to that same unit e.g. coerce_int96_timestamp_unit="ms").
-        max_workers:
+        max_workers: \
+            Number of parallelism executing CTAS result movement.
 
     Returns:
         DataFrame | Iterator[DataFrame]: \
